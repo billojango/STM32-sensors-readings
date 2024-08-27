@@ -12,12 +12,19 @@ include(${MBED_PATH}/tools/cmake/app.cmake)
 project(${APP_TARGET})
 
 add_subdirectory(${MBED_PATH})
+add_subdirectory(drivers)
+include_directories(.)
 
 add_executable(${APP_TARGET}
     main.cpp
+    StepperMotorControl.cpp
 )
 
-target_link_libraries(${APP_TARGET} mbed-os)
+target_link_libraries(${APP_TARGET} PRIVATE 
+    mbed-os
+    display
+    sensors
+)
 
 mbed_set_post_build(${APP_TARGET})
 

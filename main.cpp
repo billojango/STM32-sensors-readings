@@ -1,26 +1,45 @@
 #include "mbed.h"
+#include "ST7920.h"
+#include "HX711.h"
 
-Serial pc(USBTX, USBRX); // Serial connection to PC
-Serial modem(PD_2, PC_12); // RX, TX for modem
+// Define SPI LCD pins
+#define LCD_MOSI PB_5
+#define LCD_MISO PB_14
+#define LCD_SCK  PB_3
+#define LCD_CS   PC_8
 
-int main()
-{
-    pc.baud(115200); // Set baud rate for PC serial
-    modem.baud(115200); // Set baud rate for modem serial
-    
-    pc.printf("Initializing...\r\n");
-    ThisThread::sleep_for(1s); // Wait for 1 second
-    
-    while (1) {
-        modem.printf("AT+CGSN\r\n"); // Send AT command to modem
-        
-        char response[64]; // Allocate a buffer for the response
-        int num_bytes = modem.read(response, sizeof(response) - 1); // Read bytes from modem
-        if (num_bytes > 0) {
-            response[num_bytes] = '\0'; // Null-terminate the response string
-            pc.printf("IMEI: %s\r\n", response); // Print the IMEI to PC serial
-        }
-        
-        ThisThread::sleep_for(5s); // Wait for 5 seconds before sending the command again
+// Create SPI and LCD instances
+ST7920 lcd(LCD_MOSI, LCD_SCK, LCD_CS ); // MOSI, MISO, SCK
+
+int main() {
+    // Define pin names based on your setup
+    lcd.init();
+    lcd.cls();
+
+    LoadCells loadcell(PD_6, PE_2);  // DATA, SCK
+    printf("HX711 Load Cell Reader\n");
+    printf("----------------------\n");
+
+    // Initialize LoadCells
+    printf("Initializing LoadCells...\n");
+    loadcell.init();
+    printf("LoadCells initialized.\n");
+
+    // Set scale and tare
+    float scale_factor = 420.0983;  // Example scale factor, adjust for your calibration
+    printf("Setting scale factor...\n");
+    loadcell.setCalibrationFactor(scale_factor);
+    printf("Scale factor set to: %.4f\n", scale_factor);
+
+    printf("Beginning weight measurements...\n");
+    printf("--------------------------------\n");
+
+    while (true) {
+        // Get the latest value and print the raw reading
+        float grams = loadcell.getValue();
+        lcd.cls();
+        lcd.printf("Raw reading: %.4f g\n", grams);  // Print raw reading rounded to 1 decimal place
+        printf("Raw reading: %.4f g\n", grams);  // Print raw reading rounded to 1 decimal place
+        ThisThread::sleep_for(1000ms);  // Sleep for 1 second
     }
 }
