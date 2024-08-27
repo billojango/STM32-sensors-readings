@@ -1,30 +1,41 @@
-#pragma once
+#ifndef HX711_H
+#define HX711_H
+
 #include "mbed.h"
 
-#ifndef LOADCELLS_H
-#define LOADCELLS_H
+class HX711 {
+private:
+    DigitalOut _pd_sck;
+    DigitalIn _dout;
+    int _gain;
+    long _offset;
+    float _scale;
 
-// increase the sample count in moving average
-#if defined(SAMPLES)
-  #undef SAMPLES
-  #define SAMPLES 128
-#endif
-
-class LoadCells {
 public:
-    LoadCells(PinName dout, PinName sck);
-    void init();
-    void tare(uint8_t times = 10);
-    void setCalibrationFactor(float scale);
-    float getValue();
+    HX711(PinName dout, PinName pd_sck, int gain = 128);
+    
+    bool is_ready();
+    void wait_ready(chrono::milliseconds delay_ms = 0ms);
+    bool wait_ready_retry(int retries = 3, chrono::milliseconds delay_ms = 0ms);
+    bool wait_ready_timeout(chrono::milliseconds timeout = 1000ms, chrono::milliseconds delay_ms = 0ms);
+    
+    void set_gain(int gain = 128);
+    int32_t read();
+    int32_t read_average(int times = 10);
+    double get_value(int times = 1);
+    float get_units(int times = 1);
+    
+    void tare(int times = 10);
+    void set_scale(float scale = 1.0f);
+    float get_scale();
+    void set_offset(int32_t offset = 0);
+    int32_t get_offset();
+    
+    void power_down();
+    void power_up();
 
 private:
-    float read();
-
-    DigitalIn _data;
-    DigitalOut _sck;
-    long _offset = 0;
-    float _scale = 1.f;
+    void log(const char* message);
 };
 
-#endif // LOADCELLS_H
+#endif // HX711_H

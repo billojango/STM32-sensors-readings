@@ -1,61 +1,151 @@
 #include "HX711.h"
 
-LoadCells::LoadCells(PinName dout, PinName sck) : _data(dout), _sck(sck) {
-    _sck = 0;
-    wait_us(100);
+HX711::HX711(PinName dout, PinName pd_sck, int gain) :
+    _pd_sck(pd_sck), _dout(dout), _gain(gain), _offset(0), _scale(1.0f)
+{
+    _pd_sck = 0;
+    set_gain(gain);
+    printf("[HX711] HX711 initialized\r\n");
 }
 
-void LoadCells::init() {
-    tare();
+bool HX711::is_ready() {
+    bool ready = _dout == 0;
+    printf("[HX711] HX711 is %s\r\n", ready ? "ready" : "not ready");
+    return ready;
 }
 
-void LoadCells::tare(uint8_t times) {
-    double sum = 0;
-    for (uint8_t i = 0; i < times; i++) {
+void HX711::wait_ready(chrono::milliseconds delay_ms) {
+    printf("[HX711] Waiting for HX711 to be ready\r\n");
+    while (!is_ready()) {
+        ThisThread::sleep_for(delay_ms);
+    }
+    printf("[HX711] HX711 is now ready\r\n");
+}
+
+bool HX711::wait_ready_retry(int retries, chrono::milliseconds delay_ms) {
+    printf("[HX711] Retrying wait for HX711 to be ready\r\n");
+    int count = 0;
+    while (count < retries) {
+        if (is_ready()) {
+            printf("[HX711] HX711 is ready after retry\r\n");
+            return true;
+        }
+        ThisThread::sleep_for(delay_ms);
+        count++;
+    }
+    printf("[HX711] HX711 not ready after retries\r\n");
+    return false;
+}
+
+bool HX711::wait_ready_timeout(chrono::milliseconds timeout, chrono::milliseconds delay_ms) {
+    printf("[HX711] Waiting for HX711 with timeout\r\n");
+    Timer timer;
+    timer.start();
+    while (timer.elapsed_time() < timeout) {
+        if (is_ready()) {
+            printf("[HX711] HX711 ready within timeout\r\n");
+            return true;
+        }
+        ThisThread::sleep_for(delay_ms);
+    }
+    printf("[HX711] HX711 not ready within timeout\r\n");
+    return false;
+}
+
+void HX711::set_gain(int gain) {
+    switch (gain) {
+        case 128:
+            _gain = 1;
+            printf("[HX711] Gain set to 128\r\n");
+            break;
+        case 64:
+            _gain = 3;
+            printf("[HX711] Gain set to 64\r\n");
+            break;
+        case 32:
+            _gain = 2;
+            printf("[HX711] Gain set to 32\r\n");
+            break;
+        default:
+            _gain = 1;
+            printf("[HX711] Invalid gain, defaulting to 128\r\n");
+    }
+
+    read();
+}
+
+int32_t HX711::read() {
+    // Wait for the chip to become ready.
+    wait_ready();
+
+    int32_t value = 0;
+    uint8_t data[3] = { 0 };
+
+    // Pulse the clock pin 24 times to read the data.
+    for (int i = 0; i < 24; i++) {
+        _pd_sck = 1;
+        data[2] |= _dout.read() << (7 - (i % 8));
+        data[1] |= _dout.read() << (7 - ((i + 8) % 8));
+        data[0] |= _dout.read() << (7 - ((i + 16) % 8));
+        _pd_sck = 0;
+    }
+
+    // Set the gain for the next reading.
+    for (int i = 0; i < _gain; i++) {
+        _pd_sck = 1;
+        _pd_sck = 0;
+    }
+
+    // Combine the three bytes into a 24-bit signed integer.
+    value = ((data[2] & 0x80) ? 0xFF000000 : 0) | (data[2] << 16) | (data[1] << 8) | data[0];
+
+    return value;
+}
+
+int32_t HX711::read_average(int times) {
+    int32_t sum = 0;
+    for (int i = 0; i < times; i++) {
         sum += read();
     }
-    _offset = sum / times;
+    return sum / times;
 }
 
-float LoadCells::read() {
-    long value = 0;
-    uint8_t data[3] = { 0 };
-    uint8_t filler = 0x00;
-
-    // Wait for the chip to become ready
-    while (_data == 1);
-
-    // Clock in the data
-    for (int i = 0; i < 3; i++) {
-        for (uint8_t j = 0; j < 8; j++) {
-            _sck = 1;
-            wait_us(1);
-            data[2 - i] |= (_data & 0x1) << (7 - j);
-            _sck = 0;
-            wait_us(1);
-        }
-    }
-
-    // Replicate the most significant bit to pad out a 32-bit signed integer
-    if (data[2] & 0x80) {
-        filler = 0xFF;
-    } else {
-        filler = 0x00;
-    }
-
-    // Construct a 32-bit signed integer
-    value = (static_cast<unsigned long>(filler) << 24
-            | static_cast<unsigned long>(data[2]) << 16
-            | static_cast<unsigned long>(data[1]) << 8
-            | static_cast<unsigned long>(data[0]));
-
-    return static_cast<float>(value) - _offset; // Subtract tare offset
+double HX711::get_value(int times) {
+    return read_average(times) - _offset;
 }
 
-void LoadCells::setCalibrationFactor(float scale) {
+float HX711::get_units(int times) {
+    return get_value(times) / _scale;
+}
+
+void HX711::tare(int times) {
+    int32_t sum = read_average(times);
+    set_offset(sum);
+}
+
+void HX711::set_scale(float scale) {
     _scale = scale;
 }
 
-float LoadCells::getValue() {
-    return read() / _scale; // Return weight in grams
+float HX711::get_scale() {
+    return _scale;
+}
+
+void HX711::set_offset(int32_t offset) {
+    _offset = offset;
+}
+
+int32_t HX711::get_offset() {
+    return _offset;
+}
+
+void HX711::power_down() {
+    printf("[HX711] Powering down\r\n");
+    _pd_sck = 0;
+    _pd_sck = 1;
+}
+
+void HX711::power_up() {
+    printf("[HX711] Powering up\r\n");
+    _pd_sck = 0;
 }

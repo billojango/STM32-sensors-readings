@@ -24,6 +24,7 @@ target_link_libraries(${APP_TARGET} PRIVATE
     mbed-os
     display
     sensors
+    keypad
 )
 
 mbed_set_post_build(${APP_TARGET})

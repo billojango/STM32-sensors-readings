@@ -4,42 +4,55 @@
 
 // Define SPI LCD pins
 #define LCD_MOSI PB_5
-#define LCD_MISO PB_14
 #define LCD_SCK  PB_3
 #define LCD_CS   PC_8
 
 // Create SPI and LCD instances
-ST7920 lcd(LCD_MOSI, LCD_SCK, LCD_CS ); // MOSI, MISO, SCK
+ST7920 lcd(LCD_MOSI, LCD_SCK, LCD_CS); // MOSI, SCK, CS
+
+// Define pins for HX711
+#define DOUT_PIN PD_6
+#define SCK_PIN  PE_2
+
+// Create HX711 object
+HX711 scale(DOUT_PIN, SCK_PIN);
+
+// Define pins for LED indicators
+DigitalOut redLed(PG_1);
+DigitalOut greenLed(PG_6);
+DigitalOut blueLed(PG_7);
 
 int main() {
-    // Define pin names based on your setup
     lcd.init();
     lcd.cls();
+    lcd.printf("HX711 Scale Test\r\n");
+    printf("HX711 Scale Test\r\n");
 
-    LoadCells loadcell(PD_6, PE_2);  // DATA, SCK
-    printf("HX711 Load Cell Reader\n");
-    printf("----------------------\n");
+    // Initialize the scale
+    scale.set_scale(2280.f);    // This value is obtained by calibrating the scale with known weights
+    scale.tare();               // Reset the scale to 0
 
-    // Initialize LoadCells
-    printf("Initializing LoadCells...\n");
-    loadcell.init();
-    printf("LoadCells initialized.\n");
-
-    // Set scale and tare
-    float scale_factor = 420.0983;  // Example scale factor, adjust for your calibration
-    printf("Setting scale factor...\n");
-    loadcell.setCalibrationFactor(scale_factor);
-    printf("Scale factor set to: %.4f\n", scale_factor);
-
-    printf("Beginning weight measurements...\n");
-    printf("--------------------------------\n");
-
-    while (true) {
-        // Get the latest value and print the raw reading
-        float grams = loadcell.getValue();
+    while (1) {
+        float weight = scale.get_units(100);  // Get the average of 10 readings
         lcd.cls();
-        lcd.printf("Raw reading: %.4f g\n", grams);  // Print raw reading rounded to 1 decimal place
-        printf("Raw reading: %.4f g\n", grams);  // Print raw reading rounded to 1 decimal place
-        ThisThread::sleep_for(1000ms);  // Sleep for 1 second
+        lcd.printf("Weight: %.2f kg\r\n", weight);
+        printf("Weight: %.2f kg\r\n", weight);
+        
+        // Update LED indicators based on weight
+        if (weight < 10.0) {
+            redLed = 1;
+            greenLed = 0;
+            blueLed = 0;
+        } else if (weight >= 10.0 && weight <= 20.0) {
+            redLed = 0;
+            greenLed = 1;
+            blueLed = 0;
+        } else {
+            redLed = 0;
+            greenLed = 0;
+            blueLed = 1;
+        }
+        
+        ThisThread::sleep_for(1s);
     }
 }
